@@ -122,14 +122,15 @@ async function playViaAudio(videoId, requestId = playbackRequestId) {
     if (mediaEl !== mediaVideo) mediaVideo?.pause();
     mediaEl.crossOrigin = "anonymous";
     mediaEl.pause();
-    // Load the same-origin source first, then bind the element to Web Audio.
-    // This keeps the graph attached to the media element that will actually
-    // produce sound, including the combined-video fallback path.
+
     mediaEl.src = src;
     mediaEl.load();
-    try {
-      if (!ensureEqGraph(mediaEl)) throw new Error("graph unavailable");
-    } catch (e) { console.warn("EQ graph", e); }
+
+    if (allowEq) {
+      try {
+        ensureEqGraph(mediaEl);
+      } catch (e) { console.warn("EQ graph", e); }
+    }
 
     if (eqGain && eqConnected) {
       eqGain.gain.value = vol / 100;
@@ -144,7 +145,7 @@ async function playViaAudio(videoId, requestId = playbackRequestId) {
     if (audioCtx?.state === "suspended") {
       try { await audioCtx.resume(); } catch {}
     }
-    if (eqConnected || (settings.eqPreset || "flat") !== "flat") {
+    if (allowEq && (settings.eqPreset || "flat") !== "flat") {
       await applyEqPreset(settings.eqPreset || "flat");
     }
     isPlaying = true;

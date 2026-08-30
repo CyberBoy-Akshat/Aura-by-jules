@@ -242,11 +242,12 @@ def _get_media_url(video_id: str, fmt: str, want_meta=False) -> str | None:
     base = _yt_dlp_bin()
     args = [
         "--format", fmt,
-        "--no-download", "--print", "url",
+        "--no-download", "--print", "%(url)s",
         "--quiet", "--no-warnings",
         "--no-playlist",
         "--no-cache-dir",
-        "--extractor-args", "youtube:player_client=ios,android,mweb,tv,web",
+        "--geo-bypass",
+        "--extractor-args", "youtube:player_client=ios,android,web_creator,mweb,tv,web",
     ]
     if want_meta:
         args += ["--print", "%(width)s %(height)s"]
@@ -678,7 +679,7 @@ def _proxy(video_id: str, fmt: str, ctype: str):
     if not src:
         return jsonify({"error": "Could not extract media"}), 404
 
-    CHUNK_SIZE = 2 * 1024 * 1024  # 2MB chunk cap per serverless invocation
+    CHUNK_SIZE = 4 * 1024 * 1024  # 4MB chunk cap per serverless invocation for smooth streaming
 
     rng = request.headers.get("Range")
     req_start = 0
