@@ -18,28 +18,34 @@ let eqGraphBuilt = false;
 let eqSourceEl = null;
 const eqSources = new WeakMap();
 const eqWiredSources = new WeakSet();
+function unlockAudioContext() {
+  if (audioCtx && audioCtx.state === "suspended") {
+    audioCtx.resume().catch(() => {});
+  }
+}
+["pointerdown", "touchstart", "click", "keydown"].forEach(evt => {
+  window.addEventListener(evt, unlockAudioContext, { capture: true, passive: true });
+});
+
 function ensureEqGraph(sourceEl = getPlaybackEl()) {
   if (!sourceEl) return false;
-  if (eqConnected && eqSourceEl === sourceEl) {
-    if (audioCtx?.state === "suspended") audioCtx.resume().catch(() => {});
-    return true;
-  }
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC || !audioEl) return false;
-    audioCtx = audioCtx || new AC();
-    // Resume inside the same interaction that requested the EQ. iOS Safari
-    // otherwise leaves a successfully-created graph suspended until the next
-    // gesture, which sounds like the preset is doing nothing.
+    if (!AC) return false;
+    if (!audioCtx) audioCtx = new AC();
     if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
-    // Bind lazily to the element that is actually carrying the current track.
-    // Each HTMLMediaElement can only be wrapped once, so reuse its source node.
+
+    if (eqConnected && eqSourceEl === sourceEl && mediaSource) {
+      return true;
+    }
+
     mediaSource = eqSources.get(sourceEl);
     if (!mediaSource) {
       mediaSource = audioCtx.createMediaElementSource(sourceEl);
       eqSources.set(sourceEl, mediaSource);
     }
     eqSourceEl = sourceEl;
+
     if (!eqFilters.length) {
       const freqs = [60, 230, 910, 3600, 14000];
       eqFilters = freqs.map((freq, i) => {
@@ -63,6 +69,7 @@ function ensureEqGraph(sourceEl = getPlaybackEl()) {
       eqAnalyser.smoothingTimeConstant = 0.72;
       eqGain.connect(eqAnalyser);
     }
+
     if (!eqWiredSources.has(mediaSource)) {
       // source -> filters -> panner -> gain -> destination
       let node = mediaSource;
@@ -78,8 +85,6 @@ function ensureEqGraph(sourceEl = getPlaybackEl()) {
       eqGraphBuilt = true;
     }
     sourceEl.volume = 1;
-    // A graph may be reused after switching audio -> video. Always reassert the
-    // destination gain and media volume so both paths are audible and EQ'd.
     eqGain.gain.value = parseInt($("#volumeBar")?.value || settings.volume || 80, 10) / 100;
     eqConnected = true;
     return true;
@@ -162,12 +167,9 @@ async function applyEqPreset(id) {
   const preset = EQ_PRESETS.find(p => p.id === id) || EQ_PRESETS[0];
   settings.eqPreset = preset.id;
   saveSettings();
-  // Audio is served via the same-origin proxy (see player.js), so
-  // applying/switching a preset is purely a Web Audio operation — the media
-  // element, its src, and the muted video are never touched → no restarts.
-  const connected = ensureEqGraph(getPlaybackEl());
+  const mediaEl = getPlaybackEl();
+  const connected = ensureEqGraph(mediaEl);
   if (audioCtx?.state === "suspended") { try { await audioCtx.resume(); } catch {} }
-  // If graph was just created on a playing stream, filters start at 0 — apply now
   if (connected) setEqGains(preset);
   if (preset.eightD) startEightD();
   else stopEightD();
