@@ -3,15 +3,15 @@
 // ── Equalizer (Web Audio) ──────────────────────────────────────────────────
 const EQ_PRESETS = [
   { id: "flat", name: "Flat", icon: "fa-minus", gains: [0, 0, 0, 0, 0], eightD: false, filter: null },
-  { id: "bass", name: "Bass", icon: "fa-boombox", gains: [8, 5, 0, -1, -2], eightD: false, filter: null },
-  { id: "treble", name: "Treble", icon: "fa-wave-square", gains: [-2, -1, 1, 5, 7], eightD: false, filter: null },
-  { id: "vocal", name: "Vocal", icon: "fa-microphone", gains: [-2, 1, 5, 4, 1], eightD: false, filter: null },
-  { id: "lofi", name: "Lo-fi", icon: "fa-cloud-moon", gains: [4, 2, -2, -6, -10], eightD: false, filter: "lofi" },
-  { id: "8d", name: "8D", icon: "fa-headphones", gains: [2, 1, 0, 2, 3], eightD: true, filter: null },
-  { id: "dance", name: "Dance", icon: "fa-compact-disc", gains: [6, 3, -1, 2, 5], eightD: false, filter: null },
-  { id: "cinema", name: "Cinema", icon: "fa-film", gains: [5, 2, 0, 2, 4], eightD: false, filter: null },
-  { id: "night", name: "Night", icon: "fa-moon", gains: [3, 1, -1, -3, -5], eightD: false, filter: "soft" },
-  { id: "rock", name: "Rock", icon: "fa-guitar", gains: [5, 3, -1, 2, 4], eightD: false, filter: null },
+  { id: "bass", name: "Bass", icon: "fa-boombox", gains: [10, 7, 0, -2, -4], eightD: false, filter: null },
+  { id: "treble", name: "Treble", icon: "fa-wave-square", gains: [-4, -2, 1, 7, 10], eightD: false, filter: null },
+  { id: "vocal", name: "Vocal", icon: "fa-microphone", gains: [-3, 2, 7, 5, 1], eightD: false, filter: null },
+  { id: "lofi", name: "Lo-fi", icon: "fa-cloud-moon", gains: [6, 3, -2, -8, -14], eightD: false, filter: "lofi" },
+  { id: "8d", name: "8D", icon: "fa-headphones", gains: [4, 2, 1, 3, 5], eightD: true, filter: null },
+  { id: "dance", name: "Dance", icon: "fa-compact-disc", gains: [8, 5, -1, 3, 7], eightD: false, filter: null },
+  { id: "cinema", name: "Cinema", icon: "fa-film", gains: [7, 4, 0, 3, 6], eightD: false, filter: null },
+  { id: "night", name: "Night", icon: "fa-moon", gains: [4, 2, -1, -4, -7], eightD: false, filter: "soft" },
+  { id: "rock", name: "Rock", icon: "fa-guitar", gains: [7, 4, -1, 3, 6], eightD: false, filter: null },
 ];
 
 let eqGraphBuilt = false;
@@ -42,24 +42,37 @@ function ensureEqGraph(sourceEl = getPlaybackEl()) {
     eqSourceEl = sourceEl;
     if (!eqFilters.length) {
       const freqs = [60, 230, 910, 3600, 14000];
-      eqFilters = freqs.map((f, i) => {
+      eqFilters = freqs.map((freq, i) => {
         const b = audioCtx.createBiquadFilter();
         b.type = i === 0 ? "lowshelf" : i === freqs.length - 1 ? "highshelf" : "peaking";
-        b.frequency.value = f;
+        b.frequency.value = freq;
         b.Q.value = 1.1;
         b.gain.value = 0;
         return b;
       });
-      eqPanner = audioCtx.createStereoPanner();
+      if (typeof audioCtx.createStereoPanner === "function") {
+        eqPanner = audioCtx.createStereoPanner();
+      } else {
+        eqPanner = null;
+      }
       eqGain = audioCtx.createGain();
       eqGain.gain.value = parseInt($("#volumeBar")?.value || settings.volume || 80, 10) / 100;
+
+      eqAnalyser = audioCtx.createAnalyser();
+      eqAnalyser.fftSize = 128;
+      eqAnalyser.smoothingTimeConstant = 0.72;
+      eqGain.connect(eqAnalyser);
     }
     if (!eqWiredSources.has(mediaSource)) {
       // source -> filters -> panner -> gain -> destination
       let node = mediaSource;
       eqFilters.forEach(f => { node.connect(f); node = f; });
-      node.connect(eqPanner);
-      eqPanner.connect(eqGain);
+      if (eqPanner) {
+        node.connect(eqPanner);
+        eqPanner.connect(eqGain);
+      } else {
+        node.connect(eqGain);
+      }
       eqGain.connect(audioCtx.destination);
       eqWiredSources.add(mediaSource);
       eqGraphBuilt = true;
@@ -80,22 +93,21 @@ function ensureEqGraph(sourceEl = getPlaybackEl()) {
 function setEqGains(preset) {
   if (eqFilters?.length && preset.gains) {
     eqFilters.forEach((f, i) => {
+      f.type = i === 0 ? "lowshelf" : i === eqFilters.length - 1 ? "highshelf" : "peaking";
       let g = preset.gains[i] ?? 0;
-      if (preset.filter === "lofi" && i >= 3) g = Math.min(g, -6);
-      if (preset.filter === "soft" && i === 4) g = Math.min(g, -4);
+      if (preset.filter === "lofi" && i >= 3) g = Math.min(g, -8);
+      if (preset.filter === "soft" && i === 4) g = Math.min(g, -5);
       f.gain.value = g;
     });
   }
-  // lofi caps the top band as a highshelf on top of its listed gain
-  if (eqFilters[4]) {
-    eqFilters[4].type = "highshelf";
-    if (preset.filter === "lofi") eqFilters[4].gain.value = -12;
+  if (eqFilters[4] && preset.filter === "lofi") {
+    eqFilters[4].gain.value = -14;
   }
 }
 
 function stopEightD() {
   if (eightDTimer) { clearInterval(eightDTimer); eightDTimer = null; }
-  if (eqPanner) eqPanner.pan.value = 0;
+  if (eqPanner?.pan) eqPanner.pan.value = 0;
 }
 
 function startEightD() {
@@ -103,9 +115,9 @@ function startEightD() {
   if (!eqPanner) return;
   eightDAngle = 0;
   eightDTimer = setInterval(() => {
-    eightDAngle += 0.04;
-    if (eqPanner) eqPanner.pan.value = Math.sin(eightDAngle) * 0.92;
-  }, 40);
+    eightDAngle += 0.08;
+    if (eqPanner?.pan) eqPanner.pan.value = Math.sin(eightDAngle) * 0.95;
+  }, 30);
 }
 
 // NOTE: There is intentionally NO source-swapping here. Audio always plays
@@ -120,14 +132,8 @@ function startEqViz() {
   const viz = $("#eqViz");
   if (!viz) return;
   viz.classList.add("live");
-  if (!eqConnected || !audioCtx) return;   // CSS animation keeps running
+  if (!eqConnected || !audioCtx || !eqAnalyser) return;   // CSS animation keeps running
   viz.classList.add("driven");
-  try {
-    eqAnalyser = audioCtx.createAnalyser();
-    eqAnalyser.fftSize = 128;
-    eqAnalyser.smoothingTimeConstant = 0.72;
-    eqGain.connect(eqAnalyser);
-  } catch (e) { console.warn("analyser", e); eqAnalyser = null; return; }
   const data = new Uint8Array(eqAnalyser.frequencyBinCount);
   const spans = viz.querySelectorAll("span");
   const step = () => {
@@ -137,7 +143,7 @@ function startEqViz() {
     for (let i = 0; i < m; i++) {
       const bin = Math.floor(Math.pow(i / Math.max(m - 1, 1), 1.4) * (n - 1));
       const v = data[bin] / 255;
-      spans[i].style.height = (14 + v * 80) + "%";
+      spans[i].style.height = Math.max(14, Math.min(100, 14 + v * 86)) + "%";
     }
     eqVizRaf = requestAnimationFrame(step);
   };
@@ -145,7 +151,6 @@ function startEqViz() {
 }
 function stopEqViz() {
   if (eqVizRaf) { cancelAnimationFrame(eqVizRaf); eqVizRaf = null; }
-  if (eqAnalyser) { try { eqGain?.disconnect(eqAnalyser); } catch {} eqAnalyser = null; }
   const viz = $("#eqViz");
   if (viz) {
     viz.classList.remove("driven");

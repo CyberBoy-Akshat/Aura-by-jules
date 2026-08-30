@@ -220,7 +220,7 @@ def _yt_dlp_bin():
     return [sys.executable, "-m", "yt_dlp"]
 
 
-_AUDIO_FMT = "bestaudio[ext=m4a]/bestaudio/best"
+_AUDIO_FMT = "bestaudio[ext=m4a]/bestaudio/best[ext=mp4]/best"
 # 360p keeps the full-player video light (the art box is only ~320px) so it
 # loads and syncs fast, especially through the serverless proxy.
 _VIDEO_FMT = "best[height<=360][ext=mp4]/best[ext=mp4]/best"
@@ -246,7 +246,7 @@ def _get_media_url(video_id: str, fmt: str, want_meta=False) -> str | None:
         "--quiet", "--no-warnings",
         "--no-playlist",
         "--no-cache-dir",
-        "--extractor-args", "youtube:player_client=android,ios,mweb,web",
+        "--extractor-args", "youtube:player_client=ios,android,mweb,tv,web",
     ]
     if want_meta:
         args += ["--print", "%(width)s %(height)s"]
