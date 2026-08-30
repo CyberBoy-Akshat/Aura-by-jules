@@ -448,13 +448,15 @@ function setVolume(v) {
 // HTMLMediaElement remains the source of truth; resume the context and gently
 // recover playback without resetting the currentTime.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && isPlaying) {
+  if (isPlaying) {
     if (audioCtx?.state === "suspended") audioCtx.resume().catch(() => {});
     const media = getPlaybackEl();
     if (useAudioEl && media && media.paused) {
       media.play().catch(() => {});
     }
-    try { npfVideoSync(true); } catch {}
+    if (!document.hidden) {
+      try { npfVideoSync(true); } catch {}
+    }
   }
 });
 window.addEventListener("pageshow", () => {
